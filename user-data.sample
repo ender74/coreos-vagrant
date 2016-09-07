@@ -1,10 +1,21 @@
-#cloud-config
+#    -config
+
+write-files:
+  - path: /etc/conf.d/nfs
+    permissions: '0644'
+    content: |
+      OPTS_RPC_MOUNTD=""
+  - path: /etc/exports
+    permissions: '0644'
+    content: /exports/ *(rw,async,no_subtree_check,no_root_squash,fsid=0)
+  - path: /exports/hello
+    content: world
 
 coreos:
   etcd2:
     #generate a new token for each unique cluster from https://discovery.etcd.io/new
     #discovery: https://discovery.etcd.io/<token>
-    # multi-region and multi-cloud deployments need to use $public_ipv4
+    # multi-region and multi-     deployments need to use $public_ipv4
     advertise-client-urls: http://$public_ipv4:2379
     initial-advertise-peer-urls: http://$private_ipv4:2380
     # listen on both the official ports and the legacy ports
@@ -20,6 +31,12 @@ coreos:
       command: start
     - name: fleet.service
       command: start
+    - name: rpc-statd.service
+      command: start
+      enable: true
+    - name: nfsd.service
+      command: start
+      enable: truestrong text
     - name: flanneld.service
       drop-ins:
       - name: 50-network-config.conf
@@ -66,12 +83,14 @@ coreos:
       content: |
         [Unit]
         Description=Start Containers for docker-swarm
-        After=enable-docker-tcp.service
+        After=docker.service
 
         [Service]
         Restart=always
-        ExecStart=/usr/bin/docker start swarm-agent;/usr/bin/docker start swarm-manager;true
-        ExecStop=/usr/bin/docker stop -t 2 swarm-agent;/usr/bin/docker stop -t 2 swarm-manager;true
+        ExecStartPost=/usr/bin/docker start swarm-manager;true
+        ExecStart=-/usr/bin/docker start swarm-agent 
+        ExecStop=/usr/bin/docker stop -t 2 swarm-agent 
+        ExecStopPost=/usr/bin/docker stop -t 2 swarm-manager;true
 
         [Install]
         WantedBy=default.target
@@ -81,3 +100,16 @@ coreos:
           content: |
             [Service]
             Environment="DOCKER_OPTS=--cluster-advertise eth1:2375 --cluster-store etcd://127.0.0.1:2379"
+    - name: docker-volume-netshare.service
+      command: start
+      enable: true
+      content: |
+        [Unit]
+        Description=Enable Docker Volume Netshare Plugin for NFS
+        Requires=docker.service
+
+        [Service]
+        ExecStart=/home/core/bin/docker-volume-netshare nfs
+
+        [Install]
+        WantedBy=default.target

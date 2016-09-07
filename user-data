@@ -1,13 +1,23 @@
 #cloud-config
 
 ---
+write-files:
+- path: "/etc/conf.d/nfs"
+  permissions: '0644'
+  content: |
+    OPTS_RPC_MOUNTD=""
+- path: "/etc/exports"
+  permissions: '0644'
+  content: "/exports/ *(rw,async,no_subtree_check,no_root_squash,fsid=0)"
+- path: "/exports/hello"
+  content: world
 coreos:
   etcd2:
     advertise-client-urls: http://$public_ipv4:2379
     initial-advertise-peer-urls: http://$private_ipv4:2380
     listen-client-urls: http://0.0.0.0:2379,http://0.0.0.0:4001
     listen-peer-urls: http://$private_ipv4:2380,http://$private_ipv4:7001
-    discovery: https://discovery.etcd.io/2eef5f52190483714f4593232fce88ce
+    discovery: https://discovery.etcd.io/6eeea1e8c5f6f3d2176edd4a107cbf81
   fleet:
     public-ip: "$public_ipv4"
   flannel:
@@ -17,6 +27,12 @@ coreos:
     command: start
   - name: fleet.service
     command: start
+  - name: rpc-statd.service
+    command: start
+    enable: true
+  - name: nfsd.service
+    command: start
+    enable: truestrong text
   - name: flanneld.service
     drop-ins:
     - name: 50-network-config.conf
@@ -60,21 +76,25 @@ coreos:
   - name: start-docker-swarm.service
     command: start
     enable: true
-    content: |
-      [Unit]
-      Description=Start Containers for docker-swarm
-      After=enable-docker-tcp.service
-
-      [Service]
-      Restart=always
-      ExecStart=/usr/bin/docker start swarm-agent;/usr/bin/docker start swarm-manager;true
-      ExecStop=/usr/bin/docker stop -t 2 swarm-agent;/usr/bin/docker stop -t 2 swarm-manager;true
-
-      [Install]
-      WantedBy=default.target
+    content: "[Unit]\nDescription=Start Containers for docker-swarm\nAfter=docker.service\n\n[Service]\nRestart=always\nExecStartPost=/usr/bin/docker
+      start swarm-manager;true\nExecStart=-/usr/bin/docker start swarm-agent \nExecStop=/usr/bin/docker
+      stop -t 2 swarm-agent \nExecStopPost=/usr/bin/docker stop -t 2 swarm-manager;true\n\n[Install]\nWantedBy=default.target\n"
   - name: docker.service
     drop-ins:
     - name: 10-docker-swarm.conf
       content: |
         [Service]
         Environment="DOCKER_OPTS=--cluster-advertise eth1:2375 --cluster-store etcd://127.0.0.1:2379"
+  - name: docker-volume-netshare.service
+    command: start
+    enable: true
+    content: |
+      [Unit]
+      Description=Enable Docker Volume Netshare Plugin for NFS
+      Requires=docker.service
+
+      [Service]
+      ExecStart=/home/core/bin/docker-volume-netshare nfs
+
+      [Install]
+      WantedBy=default.target

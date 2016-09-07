@@ -159,7 +159,9 @@ Vagrant.configure("2") do |config|
             s.args = [ip]
           end
       end
-      # end of docker-swarm configuration        
+      # end of docker-swarm configuration    
+
+	  config.vm.provision :shell, path: "bootstrap.sh"
     end
   end
 end
